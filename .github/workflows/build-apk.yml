@@ -1,0 +1,73 @@
+name: Build LoudWave APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'LoudWave-Redesigned-Source.zip'
+      - '.github/workflows/build-apk.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Free runner storage
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/local/lib/android/sdk/system-images
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: false
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android components
+        run: |
+          sdkmanager "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;28.2.13676358"
+
+      - name: Extract LoudWave source
+        run: |
+          mkdir source
+          ZIP=$(find . -maxdepth 1 -name '*.zip' -print -quit)
+          test -n "$ZIP"
+          unzip -q "$ZIP" -d source
+          PROJECT=$(find source -name pubspec.yaml \
+            | grep -v '/packages/' | head -n 1)
+          test -n "$PROJECT"
+          echo "PROJECT_DIR=$(dirname "$PROJECT")" >> "$GITHUB_ENV"
+
+      - name: Get Flutter dependencies
+        run: |
+          cd "$PROJECT_DIR"
+          flutter pub get
+
+      - name: Build APK
+        run: |
+          cd "$PROJECT_DIR"
+          flutter build apk --debug --flavor github
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LoudWave-APK
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
